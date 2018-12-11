@@ -1,0 +1,126 @@
+/*
+  
+  Upload Data to AWS IoT Things 'Test2' Shadow update 
+  Support Devices: LG01 
+  
+  Example sketch showing how to get data from remote LoRa node, 
+  Then send the value to IoT Server
+
+  It is designed to work with the other sketch dht11_client. 
+
+  modified 11/12/2018
+  by Jason Lau
+  Singapore Polytechnic
+*/
+
+#include <SPI.h>
+#include <RH_RF95.h>
+#include <Console.h>
+#include <Process.h>
+
+//If you use Dragino IoT Mesh Firmware, uncomment below lines.
+//For product: LG01.
+#define BAUDRATE 115200
+
+// String myWriteAPIString = "B9Z0R25QNVEBKIFY";
+// uint16_t crcdata = 0;
+// uint16_t recCRCData = 0;
+
+// Singleton instance of the radio driver
+RH_RF95 rf95;
+
+float frequency = 433.0;
+
+static const int led = A2; // This pin is wired to the <3 LED on the LG01-P
+
+void uploadData(char* buf); // Upload Data to ThingSpeak.
+
+void setup()
+{
+  Bridge.begin(BAUDRATE);
+  Console.begin();
+  // while(!Console);
+  if (!rf95.init())
+    Console.println("init failed");
+  ;
+  // Setup ISM frequency
+  rf95.setFrequency(frequency);
+  // Setup Power,dBm
+  rf95.setTxPower(13);
+
+  // Setup Spreading Factor (6 ~ 12)
+  rf95.setSpreadingFactor(7);
+  
+  // Setup BandWidth, option: 7800,10400,15600,20800,31200,41700,62500,125000,250000,500000
+  rf95.setSignalBandwidth(125000);
+  
+  // Setup Coding Rate:5(4/5),6(4/6),7(4/7),8(4/8) 
+  rf95.setCodingRate4(5);
+
+  Console.print("Listening on frequency: ");
+  Console.println(frequency);
+}
+
+void loop()
+{
+  if (rf95.waitAvailableTimeout(2000))
+  {
+    // Should be a message for us now   
+    uint8_t buf[RH_RF95_MAX_MESSAGE_LEN];
+    uint8_t len = sizeof(buf);
+    if (rf95.recv(buf, &len))
+    {
+      digitalWrite(led, HIGH);
+
+      // Display request
+      RH_RF95::printBuffer("request: ", buf, len);
+      Console.print("got request: ");
+      Console.println((char*)buf);
+      Console.print("RSSI: ");
+      Console.println(rf95.lastRssi(), DEC);
+
+      // Perform Linux Command
+      uploadData(buf);
+      
+      // Send a reply
+      uint8_t data[] = "Acknowledged";
+      rf95.send(data, sizeof(data));
+      rf95.waitPacketSent();
+      Console.println("Acknowledgement sent");
+
+      digitalWrite(led, LOW);
+    }
+    else
+    {
+      Console.println("recv failed");
+    }
+  }
+}
+
+void uploadData(char* buf)
+{
+  String buffer = String(buf);
+  int commaIndex = buffer.indexOf(',');
+  String temperature_string = buffer.substring(0, commaIndex);
+  String humidity_string = buffer.substring(commaIndex + 1);
+
+  Console.println("Call Linux Command to Send Data");
+  Process p; // Create a process and call it "p", this process will execute the script already on Linux
+  p.begin("/root/connectDirect.sh");
+  p.addParameter(temperature_string); // Temperature
+  p.addParameter(humidity_string); // Humidity
+  p.run(); // Run the process and wait for its termination
+
+  Console.print("Feedback from Linux: ");
+  // If there's output from Linux,
+  // send it out the Console:
+  while (p.available() > 0)
+  {
+    char c = p.read();
+    Console.write(c);
+  }
+  Console.println("");
+  Console.println("Call Finished");
+  Console.println("####################################");
+  Console.println("");
+}
