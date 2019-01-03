@@ -42,7 +42,7 @@ void setup()
   // while(!Console);
   if (!rf95.init())
     Console.println("init failed");
-  ;
+  // Set the Dragino to be the same setting as the LoRa Shield, Frequency, dBm, Spreading Factor, Bandwidth, Coding rate  
   // Setup ISM frequency
   rf95.setFrequency(frequency);
   // Setup Power,dBm
@@ -65,7 +65,7 @@ void loop()
 {
   if (rf95.waitAvailableTimeout(2000))
   {
-    // Should be a message for us now   
+    // Should be a message for us now package being received is known as buf   
     uint8_t buf[RH_RF95_MAX_MESSAGE_LEN];
     uint8_t len = sizeof(buf);
     if (rf95.recv(buf, &len))
@@ -82,7 +82,7 @@ void loop()
       // Perform Linux Command
       uploadData(buf);
       
-      // Send a reply
+      // Send a reply to let the LoRa Shield know that the package has been revceived
       uint8_t data[] = "Acknowledged";
       rf95.send(data, sizeof(data));
       rf95.waitPacketSent();
@@ -96,19 +96,22 @@ void loop()
     }
   }
 }
-
+//We need to slot the numbers into this format""Temperature":23.5,"Humidity":59.7,"Voltage":3.3"
 void uploadData(char* buf)
 {
   String buffer = String(buf);
   int commaIndex = buffer.indexOf(',');
+  int secondCommaIndex = buffer.indexOf(',', commaIndex + 1);
   String temperature_string = buffer.substring(0, commaIndex);
-  String humidity_string = buffer.substring(commaIndex + 1);
+  String humidity_string = buffer.substring(commaIndex + 1, secondCommaIndex);
+  String Volt_string = buffer.substring(secondCommaIndex + 1);
 
   Console.println("Call Linux Command to Send Data");
   Process p; // Create a process and call it "p", this process will execute the script already on Linux
   p.begin("/root/connectDirect.sh");
   p.addParameter(temperature_string); // Temperature
   p.addParameter(humidity_string); // Humidity
+  p.addParameter(Volt_string); // Voltage
   p.run(); // Run the process and wait for its termination
 
   Console.print("Feedback from Linux: ");
